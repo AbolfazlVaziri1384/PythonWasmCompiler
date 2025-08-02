@@ -1,0 +1,75 @@
+﻿@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<h3>Python Compiler</h3>
+
+<div id="editor" style="height: 300px; width: 100%; border: 1px solid gray;"></div>
+<button class="btn btn-primary mt-2" @onclick="RunPythonCode">Run</button>
+
+<pre class="mt-3 bg-light p-2 border"><code>@output</code></pre>
+
+@code {
+    private string output = "";
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<PythonEditor>? _dotNetRef;
+    public class RunResult
+    {
+        public string Output { get; set; } = "";
+        public string Error { get; set; } = "";
+        public int? Line { get; set; } 
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/pythonEditor.js");
+            _dotNetRef = DotNetObjectReference.Create(this);
+
+            await _module.InvokeVoidAsync("initializeEditor", _dotNetRef);
+            await JS.InvokeVoidAsync("loadPyodideAndPackages");
+        }
+    }
+
+
+    private async Task RunPythonCode()
+    {
+        await _module!.InvokeVoidAsync("clearErrors");
+
+        var code = await _module.InvokeAsync<string>("getEditorContent");
+        var result = await JS.InvokeAsync<RunResult>("runPythonCode", code);
+
+        if (!string.IsNullOrWhiteSpace(result.Error))
+        {
+            output = result.Error;
+
+            if (result.Line.HasValue)
+                await _module.InvokeVoidAsync("highlightErrorLine", result.Line.Value, result.Error, "error"); // 👈 error واقعی
+        }
+        else
+        {
+            output = result.Output;
+        }
+    }
+
+
+
+    [JSInvokable]
+    public async Task OnEditorChanged(string code)
+    {
+        await _module!.InvokeVoidAsync("clearErrors");
+        var result = await JS.InvokeAsync<RunResult>("runPythonCode", code);
+
+        if (!string.IsNullOrWhiteSpace(result.Error) && result.Line.HasValue)
+        {
+            await _module.InvokeVoidAsync("highlightErrorLine", result.Line.Value, result.Error, "warning");
+        }
+    }
+
+
+
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+    }
+}

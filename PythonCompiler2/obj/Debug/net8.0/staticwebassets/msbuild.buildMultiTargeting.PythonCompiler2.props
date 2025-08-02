@@ -1,0 +1,3 @@
+﻿<Project>
+  <Import Project="..\build\PythonCompiler2.props" />
+</Project>
